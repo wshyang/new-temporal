@@ -486,7 +486,21 @@ def main(argv=None):
     parser.add_argument("mode", choices=["prepare", "verify", "install-offline", "diagnose"])
     parser.add_argument("--root", type=Path, default=Path.cwd() / "warehouse-assets")
     parser.add_argument("--skip-build", action="store_true", help="skip only Cargo-tool executable builds; still requires glibc Linux x86_64")
+    parser.add_argument("--pack-repo", type=Path, metavar="ABSOLUTE_PATH",
+                        help="prepare only: afterwards gzip/split files over 50 MB across this repo and remove verified originals; restore before use")
     args = parser.parse_args(argv)
+    packer = Path.cwd() / "pack-large-files.py"
+    if args.pack_repo is not None:
+        if args.mode != "prepare":
+            parser.error("--pack-repo is only supported with prepare")
+        if not args.pack_repo.is_absolute() or not args.pack_repo.is_dir():
+            parser.error("--pack-repo must be an existing absolute repository directory")
+        args.pack_repo = args.pack_repo.resolve()
+        bundle = args.root.resolve()
+        if args.pack_repo == args.pack_repo.parent or bundle == args.pack_repo or not bundle.is_relative_to(args.pack_repo):
+            parser.error("--pack-repo must contain (but not equal) the bundle directory and cannot be the filesystem root")
+        if not packer.is_file():
+            parser.error("--pack-repo requires pack-large-files.py beside vendor-assets.sh")
     if args.skip_build and args.mode != "prepare":
         parser.error("--skip-build is only supported with prepare")
     if args.mode == "diagnose":
@@ -536,6 +550,10 @@ def main(argv=None):
     seal(root, not args.skip_build)
     print("Complete. Preserve the entire bundle plus this script; verify after transfer.")
     print("Temporal SDK compatibility and app Function sandbox tests remain required.")
+    if args.pack_repo is not None:
+        verify(root)
+        run([sys.executable, packer, "pack", "--repo", args.pack_repo, "--remove-originals"])
+        print("Repository packed for transport. Restore with pack-large-files.py before warehouse verify/use.")
 
 
 if __name__ == "__main__":

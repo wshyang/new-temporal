@@ -50,6 +50,41 @@ class AssetTests(unittest.TestCase):
             self.assertEqual(list(package.iterdir()), [script])
             self.assertFalse(external.exists())
 
+    def test_pack_repo_only_runs_after_successful_seal_and_verify(self):
+        with tempfile.TemporaryDirectory() as tmp, contextlib.ExitStack() as stack:
+            repo = Path(tmp).resolve()
+            root = repo / "warehouse-assets"
+            events = []
+            stack.enter_context(patch.object(bundler.Path, "cwd", return_value=SCRIPT.parent))
+            stack.enter_context(patch.object(bundler, "require_host"))
+            stack.enter_context(patch.object(bundler.shutil, "which", return_value="/usr/bin/tool"))
+            for name in ["fetch", "prepare_rust", "install_rust", "install_release_assets",
+                         "prepare_tool", "prepare_advisory_git", "write_env", "smoke"]:
+                stack.enter_context(patch.object(bundler, name))
+            stack.enter_context(patch.object(bundler, "seal", side_effect=lambda *a: events.append("seal")))
+            stack.enter_context(patch.object(bundler, "verify", side_effect=lambda *a: events.append("verify")))
+            run = stack.enter_context(patch.object(bundler, "run", side_effect=lambda *a: events.append("pack")))
+            bundler.main(["prepare", "--root", str(root), "--skip-build", "--pack-repo", str(repo)])
+            self.assertEqual(events, ["seal", "verify", "pack"])
+            self.assertEqual(run.call_args.args[0][1:], [SCRIPT.parent / "pack-large-files.py",
+                             "pack", "--repo", repo, "--remove-originals"])
+            run.reset_mock()
+            with patch.object(bundler, "smoke", side_effect=RuntimeError("smoke failed")):
+                with self.assertRaises(RuntimeError):
+                    bundler.main(["prepare", "--root", str(root), "--skip-build", "--pack-repo", str(repo)])
+            run.assert_not_called()
+
+    def test_pack_repo_invalid_arguments_fail_before_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp).resolve()
+            for arguments in (["verify", "--pack-repo", str(repo)],
+                              ["prepare", "--pack-repo", "relative"],
+                              ["prepare", "--root", str(repo), "--pack-repo", str(repo)]):
+                with self.subTest(arguments=arguments), contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit):
+                        bundler.main(arguments)
+                self.assertEqual(list(repo.iterdir()), [])
+
     def test_fetch_certificate_failures_are_actionable_and_fail_closed(self):
         for wrapped in (False, True):
             with self.subTest(wrapped=wrapped), tempfile.TemporaryDirectory() as tmp:

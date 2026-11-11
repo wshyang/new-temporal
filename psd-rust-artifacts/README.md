@@ -11,10 +11,12 @@ application's Cargo dependency warehouse; this companion does not replace them.
 
 | File | Purpose |
 | --- | --- |
-| `vendor-assets.sh` | Bash/Python bundler: `prepare`, `verify`, `install-offline`, `diagnose` |
+| `vendor-assets.sh` | Bash/Python bundler: `prepare`, `verify`, `install-offline`, `diagnose`; optional post-preparation packing |
+| `pack-large-files.py` | Cross-platform gzip + 50 MB chunk packing, integrity verification and restoration |
+| `PACKING.md` | Repository-wide transport packaging and rejected Git push/history repair guidance |
 | `offline-warehouse-assets.md` | Pinned inventory, prerequisites, offline use, integration/security limits |
 | `DOCKER-MAC.md` | Apple Silicon Docker commands, approved Cloudflare Gateway CA export and trust setup |
-| `tests/test_vendor_assets.py` | Network-free regression tests; no Rust installation required |
+| `tests/test_*.py` | Network-free bundler/packing regression tests; no Rust installation required |
 | `.gitignore` | Excludes generated bundles and Python bytecode within this directory |
 
 The bundle includes pinned Linux x86_64 Temporal dev/time-skipping executables,
@@ -45,6 +47,22 @@ location. If you already have partial downloads elsewhere, keep them and point
 `--root` at that directory; in Docker it must be a path visible inside the
 container. Do not run two preparations against the same output directory.
 
+## Optional Git transport packaging
+
+For repositories intentionally storing the warehouse in Git, see
+[PACKING.md](PACKING.md). `pack-large-files.py` compresses files over 50 MB into
+chunks of at most 50,000,000 bytes and provides checksum-verified restoration.
+It runs natively on Mac or Linux with Python 3.11+. Use a dry run first, and stop
+all preparation/build processes before packing. Normal packing keeps originals;
+`--remove-originals` explicitly switches to the transport layout.
+
+`prepare --pack-repo /absolute/repo/path` invokes the helper after successful
+preparation/verification and **removes verified originals**. Restore before using
+the warehouse. The helper must be beside the shell script for this optional mode.
+The shell's original preparation modes remain self-contained. Packing does not
+rewrite Git history: oversized files in rejected commits must also be removed
+from the outgoing history as described in the guide.
+
 ## Copy into the artifacts repository
 
 Choose **one** layout. Run these examples with both repositories cloned locally,
@@ -61,9 +79,9 @@ Choose a new, unused destination directory so existing files are not overwritten
 
 ```bash
 mkdir "$DEST/offline-assets"
-cp -p "$SOURCE/vendor-assets.sh" "$SOURCE/README.md" \
-  "$SOURCE/DOCKER-MAC.md" "$SOURCE/offline-warehouse-assets.md" \
-  "$SOURCE/.gitignore" "$DEST/offline-assets/"
+cp -p "$SOURCE/vendor-assets.sh" "$SOURCE/pack-large-files.py" \
+  "$SOURCE/README.md" "$SOURCE/PACKING.md" "$SOURCE/DOCKER-MAC.md" \
+  "$SOURCE/offline-warehouse-assets.md" "$SOURCE/.gitignore" "$DEST/offline-assets/"
 cp -R "$SOURCE/tests" "$DEST/offline-assets/tests"
 cd "$DEST/offline-assets"
 bash ./vendor-assets.sh diagnose
@@ -75,9 +93,10 @@ Cargo workspace changes are required. These explicit copies exclude generated
 
 ### Option B: put the companion beside the existing collector
 
-Copy `vendor-assets.sh`, `offline-warehouse-assets.md`, `DOCKER-MAC.md` and
-`tests/test_vendor_assets.py` into the matching paths at the artifacts repository
-root, reviewing any destination conflicts first. Copy this README as
+Copy `vendor-assets.sh`, `pack-large-files.py`, `PACKING.md`,
+`offline-warehouse-assets.md`, `DOCKER-MAC.md` and both `tests/test_*.py` files into
+the matching paths at the artifacts repository root, reviewing any destination
+conflicts first. Copy this README as
 `README-offline-assets.md` rather than replacing that repository's README.
 **Merge** this directory's ignore rules into the destination `.gitignore`; do
 not overwrite its existing rules. Run the commands from that repository root.
@@ -87,8 +106,10 @@ A Git cherry-pick of this PR's commit preserves the `psd-rust-artifacts/` prefix
 it does not automatically flatten paths into the other repository. The manual
 copy options above are useful when you want a different destination layout.
 Review `git diff --stat` and staged files before committing in the target repo.
-Only the source package belongs in Git, not generated binaries, vendor trees,
-private keys, organization certificates or local environment settings.
+In **this `new-temporal` PR**, only the source package belongs in Git, not generated
+binaries or vendor trees. If you deliberately track warehouse content in the
+artifacts repository, follow `PACKING.md` and explicitly review the transport
+files. Never commit private keys, organization certificates or local secrets.
 
 ## Validate before or after copying
 
@@ -97,7 +118,7 @@ From the directory containing `vendor-assets.sh`:
 ```bash
 bash -n vendor-assets.sh
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
-  -s tests -p 'test_vendor_assets.py' -v
+  -s tests -p 'test_*.py' -v
 bash ./vendor-assets.sh diagnose
 ```
 

@@ -169,7 +169,29 @@ This avoids redownloading solely because the source package was reorganized.
 Do not run simultaneous preparations against the same bundle. For a later full
 build, rerun without `--skip-build` using the same mounts and root.
 
-## 5. Verify and transfer
+## 5. Optional repository-wide packing for Git
+
+See [PACKING.md](PACKING.md) for gzip compression, 50,000,000-byte chunks,
+restore commands, and fixing already-committed oversized files after a rejected
+push. You can run the packer natively on your Mac after the container exits.
+
+To pack automatically after preparation, copy `pack-large-files.py` beside the
+shell script and change the Docker command's final line to:
+
+```bash
+bash ./vendor-assets.sh prepare --skip-build --pack-repo /warehouse
+```
+
+This **removes verified oversized originals** after successful preparation.
+Restore before verifying or using the warehouse. `/warehouse` must mount the
+whole repository if you also want to pack root-level artifacts outside the
+package. With the script under `offline-assets/`, mount the repository root,
+set `-w /warehouse/offline-assets`, and still pass `--pack-repo /warehouse`.
+An external `--root /existing-assets` is not contained in `/warehouse`; use the
+standalone packer on the appropriate repository instead. Do not run packing
+while preparation or another writer is active.
+
+## 6. Verify and transfer
 
 After preparation completes, Python 3.11+ on your Mac can verify the bundle
 without executing Linux binaries:

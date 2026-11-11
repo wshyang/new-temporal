@@ -205,6 +205,22 @@ context. If no inspection is expected or the approved CA does not resolve the
 failure, ask IT to investigate the chain/network path rather than adding unknown
 certificates.
 
+## Optional repository-wide 50 MB transport chunks
+
+See [PACKING.md](PACKING.md) for `pack-large-files.py` and the optional
+`prepare --pack-repo /absolute/repository/path` hook. The hook runs only after
+successful preparation and verification, compresses every regular file over
+50,000,000 bytes in the selected repository (excluding Git internals, symlinks
+and packing stores), splits it into at-most-50,000,000-byte chunks, and removes
+verified originals. It requires the Python helper beside this shell script.
+
+Packing is **not a runnable warehouse layout**. Restore originals with the
+helper before `verify`, `prepare`, `install-offline` or executing any bundled
+tool. Do not place `.warehouse-packed/` inside a sealed bundle or rewrite its
+manifest to accommodate missing originals. The helper has its own integrity
+manifest. Packing does not repair oversized blobs in earlier Git commits;
+follow the guide's rejected-push history instructions as well.
+
 ## Transfer and use offline
 
 Transfer **the entire directory**, including dotfiles, executable permissions and
