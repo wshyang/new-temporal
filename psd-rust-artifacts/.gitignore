@@ -1,0 +1,4 @@
+# Generated offline binaries/source bundles can be several GB.
+/warehouse-assets/
+__pycache__/
+*.py[cod]
